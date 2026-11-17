@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>城市交通路线规划</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="site-title">
+        <span class="site-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        <h1>城市交通路线规划</h1>
+      </div>
+      <p class="algorithm">Dijkstra 最短路径</p>
+    </div>
+  </header>
+
+  <main class="workspace">
+    <section class="map-panel" aria-labelledby="map-title">
+      <header class="map-header">
+        <h2 id="map-title">五大道—小白楼</h2>
+        <span>天津市和平区</span>
+      </header>
+      <div class="map-stage" id="map-stage">
+        <canvas id="road-map" role="img" aria-label="五大道—小白楼机动车路网"></canvas>
+        <div class="north" aria-label="地图上方为北">
+          <span>北</span>
+          <i aria-hidden="true"></i>
+        </div>
+        <div class="map-scale" id="map-scale" hidden>
+          <span id="scale-value"></span>
+        </div>
+      </div>
+      <footer class="map-footer">
+        <ul class="legend" aria-label="图例">
+          <li><i class="legend-road" aria-hidden="true"></i>机动车道</li>
+          <li><i class="legend-route" aria-hidden="true"></i>规划路线</li>
+          <li><i class="legend-start" aria-hidden="true"></i>起点</li>
+          <li><i class="legend-end" aria-hidden="true"></i>终点</li>
+        </ul>
+        <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">© OpenStreetMap contributors</a>
+      </footer>
+    </section>
+
+    <aside class="sidebar" aria-labelledby="planner-title">
+      <div class="planner">
+        <h2 id="planner-title">规划路线</h2>
+        <div class="endpoint-fields">
+          <div class="endpoint">
+            <label for="start"><i class="legend-start" aria-hidden="true"></i>起点</label>
+            <select id="start" disabled>
+              <option value="">选择起点</option>
+            </select>
+          </div>
+          <div class="endpoint">
+            <label for="end"><i class="legend-end" aria-hidden="true"></i>终点</label>
+            <select id="end" disabled>
+              <option value="">选择终点</option>
+            </select>
+          </div>
+        </div>
+
+        <fieldset id="strategies" disabled>
+          <legend>寻路策略</legend>
+          <div class="strategy-options">
+            <label>
+              <input type="radio" name="strategy" value="distance" checked>
+              <span>最短距离</span>
+            </label>
+            <label>
+              <input type="radio" name="strategy" value="time">
+              <span>预计最快</span>
+            </label>
+            <label>
+              <input type="radio" name="strategy" value="surface">
+              <span>优先路面条件</span>
+            </label>
+          </div>
+        </fieldset>
+
+        <button class="demo-button" id="demo" type="button" disabled>
+          <i aria-hidden="true"></i>一键演示
+        </button>
+      </div>
+
+      <section class="results" aria-labelledby="results-title">
+        <h2 id="results-title">路线结果</h2>
+        <p id="route-status" class="route-status" role="status" aria-atomic="true">正在加载路网…</p>
+        <div id="route-details" class="route-details" hidden>
+          <dl class="metrics">
+            <div data-metric="distance">
+              <dt>路线距离</dt>
+              <dd><strong id="distance-value"></strong><span id="distance-unit"></span></dd>
+            </div>
+            <div data-metric="time">
+              <dt>预计时间</dt>
+              <dd><strong id="time-value"></strong><span id="time-unit"></span></dd>
+            </div>
+            <div data-metric="surface">
+              <dt>路面代价</dt>
+              <dd><strong id="surface-value"></strong><span id="surface-unit"></span></dd>
+            </div>
+          </dl>
+          <section class="traversal" id="traversal" aria-labelledby="roads-title" hidden>
+            <h3 id="roads-title">经过道路</h3>
+            <ol id="road-list" class="road-list" tabindex="0" aria-label="按行驶顺序列出的道路"></ol>
+          </section>
+        </div>
+      </section>
+
+      <details class="model-note">
+        <summary>时间与路面代价为教学估算</summary>
+        <ul>
+          <li>路线距离按真实道路几何计算。</li>
+          <li>预计时间由道路长度、按道路等级设定的参考车速和模拟拥堵倍率计算。</li>
+          <li>路面代价为道路长度乘以惩罚倍率。优先使用已标注材质，缺失时按道路等级设默认倍率。</li>
+        </ul>
+      </details>
+    </aside>
+  </main>
+</body>
+</html>
