@@ -1,4 +1,9 @@
+# Python and pytest caches
 __pycache__/
 .pytest_cache/
-.qa/
-local_data/cities/
+
+# Local acceptance evidence and downloaded raw extracts
+/.qa/
+
+# Imported copies created by the running app
+/local_data/

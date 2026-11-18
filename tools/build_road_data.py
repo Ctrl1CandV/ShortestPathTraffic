@@ -99,7 +99,48 @@ JINAN = CityExtract(
     ),
     ("peoples-hall", "baihuazhou"), ROOT / "examples" / "jinan.json",
 )
-CITIES = {city.city_id: city for city in (TIANJIN, BEIJING, JINAN)}
+TAIYUAN = CityExtract(
+    "taiyuan", "太原", "迎泽 · 唱经楼—文瀛公园",
+    (112.557, 37.862, 112.570, 37.874),
+    (
+        ("changjing-tower", "唱经楼", "way", 177665429),
+        ("wenying-park", "文瀛公园", "way", 1253283442),
+        ("memorial-tower", "革命烈士纪念塔", "way", 806653668),
+        ("shanxi-hotel", "山西饭店", "way", 806653670),
+        ("wuyi-school", "五一路小学", "node", 4218794429),
+        ("taiyuan-branch", "中共太原支部旧址", "way", 1448288715),
+    ),
+    ("changjing-tower", "shanxi-hotel"), ROOT / "examples" / "taiyuan.json",
+)
+SHIJIAZHUANG = CityExtract(
+    "shijiazhuang", "石家庄", "市中心 · 平安大街—博物院",
+    (114.495, 38.035, 114.520, 38.050),
+    (
+        ("pingan-park", "平安公园", "way", 158176578),
+        ("changan-park", "长安公园", "way", 158195907),
+        ("beiguo-mall", "北国商城", "node", 7844981327),
+        ("city-library", "石家庄市图书馆", "way", 1117145724),
+        ("hebei-library", "河北省图书馆", "way", 838474515),
+        ("first-middle-school", "石家庄市第一中学", "way", 802067367),
+        ("expo-center", "石家庄国际博览中心", "way", 467191599),
+    ),
+    ("pingan-park", "expo-center"), ROOT / "examples" / "shijiazhuang.json",
+)
+XIAN = CityExtract(
+    "xian", "西安", "城墙内 · 钟楼—和平门",
+    (108.939, 34.248, 108.959, 34.265),
+    (
+        ("bell-tower", "西安钟楼", "way", 254488435),
+        ("stele-museum", "西安碑林博物馆", "way", 256711574),
+        ("yongning-gate", "永宁门", "node", 6817037487),
+        ("heping-gate", "和平门", "node", 2723097400),
+        ("shuyuanmen", "书院门", "way", 1558755405),
+        ("qin-opera-museum", "中国秦腔艺术博物馆", "node", 13625089821),
+        ("kuixing-tower", "魁星楼", "node", 5304082974),
+    ),
+    ("bell-tower", "heping-gate"), ROOT / "examples" / "xian.json",
+)
+CITIES = {city.city_id: city for city in (TIANJIN, BEIJING, JINAN, TAIYUAN, SHIJIAZHUANG, XIAN)}
 
 
 def allows_motorcar(tags: dict[str, str], direction: str) -> bool:
@@ -226,6 +267,8 @@ def build_snapshot(osm: ET.Element, extracted_on: date, landmarks=None, *, city:
         "city_name": city.city_name,
         "area_name": city.area_name,
         "license": "ODbL-1.0",
+        "license_url": "https://opendatacommons.org/licenses/odbl/1-0/",
+        "attribution": "© OpenStreetMap contributors",
         "demo": {"start": city.demo_stops[0], "end": city.demo_stops[1], "strategy": "distance"},
         "bounds": city.display_bounds,
         "source_url": city.source_url,

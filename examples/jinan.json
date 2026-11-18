@@ -3,6 +3,8 @@
   "city_name": "济南",
   "area_name": "大明湖南侧—泉城广场",
   "license": "ODbL-1.0",
+  "license_url": "https://opendatacommons.org/licenses/odbl/1-0/",
+  "attribution": "© OpenStreetMap contributors",
   "demo": {
     "start": "peoples-hall",
     "end": "baihuazhou",

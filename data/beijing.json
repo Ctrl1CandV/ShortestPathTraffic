@@ -3,6 +3,8 @@
   "city_name": "北京",
   "area_name": "东城 · 东四—东直门",
   "license": "ODbL-1.0",
+  "license_url": "https://opendatacommons.org/licenses/odbl/1-0/",
+  "attribution": "© OpenStreetMap contributors",
   "demo": {
     "start": "guijie",
     "end": "fu-palace",
