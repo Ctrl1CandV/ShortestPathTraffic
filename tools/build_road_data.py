@@ -1,6 +1,8 @@
-"""Download the Tianjin OpenStreetMap extract and prepare the offline snapshot."""
+"""Prepare the offline city packs from OpenStreetMap extracts."""
 
+import argparse
 import json
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from itertools import groupby
 from math import cos, hypot, radians
@@ -10,13 +12,7 @@ from urllib.request import Request, urlopen
 from xml.etree import ElementTree as ET
 
 
-REQUEST_BOUNDS = (117.193, 39.102, 117.220, 39.126)
-DISPLAY_BOUNDS = (117.192, 39.101, 117.221, 39.127)
-SOURCE_URL = (
-    "https://api.openstreetmap.org/api/0.6/map?bbox="
-    + ",".join(f"{coordinate:.3f}" for coordinate in REQUEST_BOUNDS)
-)
-OUTPUT = Path(__file__).resolve().parents[1] / "data" / "tianjin.json"
+ROOT = Path(__file__).resolve().parents[1]
 CHINA_TIME = timezone(timedelta(hours=8))
 
 ROAD_TYPES = {
@@ -46,6 +42,64 @@ LANDMARKS = (
     ("hisense-plaza", "海信广场", "way", 678547640),
     ("binjiangdao", "河北路滨江道", "node", 5588338624),
 )
+
+
+@dataclass(frozen=True)
+class CityExtract:
+    city_id: str
+    city_name: str
+    area_name: str
+    bounds: tuple[float, float, float, float]
+    landmarks: tuple[tuple[str, str, str, int], ...]
+    demo_stops: tuple[str, str]
+    output: Path
+
+    @property
+    def source_url(self) -> str:
+        bbox = ",".join(f"{coordinate:.3f}" for coordinate in self.bounds)
+        return f"https://api.openstreetmap.org/api/0.6/map?bbox={bbox}"
+
+    @property
+    def display_bounds(self) -> list[float]:
+        west, south, east, north = self.bounds
+        padded = (west - 0.001, south - 0.001, east + 0.001, north + 0.001)
+        return [round(value, 6) for value in padded]
+
+
+TIANJIN = CityExtract(
+    "tianjin", "天津", "五大道—小白楼",
+    (117.193, 39.102, 117.220, 39.126), LANDMARKS,
+    ("wudadao-park", "tianjin-concert-hall"), ROOT / "data" / "tianjin.json",
+)
+BEIJING = CityExtract(
+    "beijing", "北京", "东城 · 东四—东直门",
+    (116.412, 39.923, 116.430, 39.941),
+    (
+        ("fu-palace", "孚王府", "way", 1020156937),
+        ("yaowang-temple", "东药王庙遗存", "way", 1537869069),
+        ("guijie", "簋街雕像", "node", 4849393921),
+        ("poly-museum", "保利艺术博物馆", "node", 5821294053),
+        ("comedy-theatre", "北京喜剧院", "way", 636357988),
+        ("dongsi-park", "东四奥林匹克社区公园", "way", 986582064),
+        ("dongzhimen-school", "东直门中学（南校）", "way", 429791474),
+    ),
+    ("guijie", "fu-palace"), ROOT / "data" / "beijing.json",
+)
+JINAN = CityExtract(
+    "jinan", "济南", "大明湖南侧—泉城广场",
+    (117.010, 36.660, 117.029, 36.674),
+    (
+        ("baihuazhou", "百花洲北入口", "way", 574277089),
+        ("may-third-hall", "五三纪念堂", "way", 571712211),
+        ("jiefang-pavilion", "解放阁", "node", 5921921280),
+        ("quancheng-square", "泉城广场", "way", 591478174),
+        ("daminghu-school", "大明湖小学", "way", 571698904),
+        ("peoples-hall", "人民会堂", "way", 1236956216),
+        ("jinan-theatre", "济南剧院", "node", 13823751904),
+    ),
+    ("peoples-hall", "baihuazhou"), ROOT / "examples" / "jinan.json",
+)
+CITIES = {city.city_id: city for city in (TIANJIN, BEIJING, JINAN)}
 
 
 def allows_motorcar(tags: dict[str, str], direction: str) -> bool:
@@ -124,13 +178,15 @@ def snap_landmarks(landmarks, all_nodes, osm_ways, road_nodes, roads) -> list[di
     return snapped
 
 
-def build_snapshot(osm: ET.Element, extracted_on: date, landmarks=LANDMARKS) -> dict:
+def build_snapshot(osm: ET.Element, extracted_on: date, landmarks=None, *, city: CityExtract = TIANJIN) -> dict:
+    if landmarks is None:
+        landmarks = city.landmarks
     all_nodes = {
         int(node.attrib["id"]): (float(node.attrib["lon"]), float(node.attrib["lat"]))
         for node in osm.findall("node")
     }
     osm_ways = {int(way.attrib["id"]): way for way in osm.findall("way")}
-    west, south, east, north = DISPLAY_BOUNDS
+    west, south, east, north = city.display_bounds
     in_bounds = {
         node_id for node_id, (lon, lat) in all_nodes.items()
         if west <= lon <= east and south <= lat <= north
@@ -166,8 +222,13 @@ def build_snapshot(osm: ET.Element, extracted_on: date, landmarks=LANDMARKS) -> 
     road_node_ids = sorted({node_id for road in roads for node_id in road["nodes"]})
     road_nodes = {node: all_nodes[node] for node in road_node_ids}
     return {
-        "bounds": list(DISPLAY_BOUNDS),
-        "source_url": SOURCE_URL,
+        "city_id": city.city_id,
+        "city_name": city.city_name,
+        "area_name": city.area_name,
+        "license": "ODbL-1.0",
+        "demo": {"start": city.demo_stops[0], "end": city.demo_stops[1], "strategy": "distance"},
+        "bounds": city.display_bounds,
+        "source_url": city.source_url,
         "extracted_on": extracted_on.isoformat(),
         "nodes": [[node_id, *road_nodes[node_id]] for node_id in road_node_ids],
         "roads": roads,
@@ -175,25 +236,29 @@ def build_snapshot(osm: ET.Element, extracted_on: date, landmarks=LANDMARKS) -> 
     }
 
 
-def write_snapshot(snapshot: dict) -> None:
-    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
-    output = NamedTemporaryFile("w", encoding="utf-8", dir=OUTPUT.parent, delete=False)
+def write_snapshot(snapshot: dict, destination: Path) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    output = NamedTemporaryFile("w", encoding="utf-8", dir=destination.parent, delete=False)
     temporary = Path(output.name)
     try:
         with output:
             json.dump(snapshot, output, ensure_ascii=False, indent=2)
             output.write("\n")
-        temporary.replace(OUTPUT)
+        temporary.replace(destination)
     finally:
         temporary.unlink(missing_ok=True)
-    print(f"{OUTPUT.name}: {len(snapshot['roads'])} roads, {len(snapshot['nodes'])} nodes")
+    print(f"{destination.name}: {len(snapshot['roads'])} roads, {len(snapshot['nodes'])} nodes")
 
 
 def main() -> None:
-    request = Request(SOURCE_URL, headers={"User-Agent": "ShortestPathTrafficCourseProject/1.0"})
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--city", choices=CITIES, default="tianjin")
+    city = CITIES[parser.parse_args().city]
+    request = Request(city.source_url, headers={"User-Agent": "ShortestPathTrafficCourseProject/1.0"})
     with urlopen(request, timeout=60) as response:
         root = ET.parse(response).getroot()
-    write_snapshot(build_snapshot(root, datetime.now(CHINA_TIME).date()))
+    snapshot = build_snapshot(root, datetime.now(CHINA_TIME).date(), city=city)
+    write_snapshot(snapshot, city.output)
 
 
 if __name__ == "__main__":

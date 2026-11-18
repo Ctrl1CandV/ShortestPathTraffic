@@ -1,287 +1,218 @@
-"use strict";
+import {setMap, setTrace, pickRoad} from "./map.js";
 
-const startSelect = document.getElementById("start");
-const endSelect = document.getElementById("end");
-const strategyControl = document.getElementById("strategies");
-const strategyInputs = [...strategyControl.querySelectorAll("input")];
-const demoButton = document.getElementById("demo");
-const routeStatus = document.getElementById("route-status");
-const routeDetails = document.getElementById("route-details");
-const traversal = document.getElementById("traversal");
-const roadList = document.getElementById("road-list");
-const stage = document.getElementById("map-stage");
-const canvas = document.getElementById("road-map");
-const context = canvas.getContext("2d");
-const mapScale = document.getElementById("map-scale");
-const scaleValue = document.getElementById("scale-value");
-
-const fontFamily = '"Inter", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", sans-serif';
+const byId = (id) => document.getElementById(id);
+const citySelect = byId("city");
+const startSelect = byId("start");
+const endSelect = byId("end");
+const roadSelect = byId("road-select");
+const routeStatus = byId("route-status");
+const routeDetails = byId("route-details");
+const traversal = byId("traversal");
+const roadList = byId("road-list");
+const algorithmNames = {dijkstra: "Dijkstra", astar: "A*"};
 const whole = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 });
 const tenths = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 1 });
 const hundredths = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 });
-const roadLevels = {
-  motorway: 2,
-  trunk: 2,
-  primary: 2,
-  secondary: 1,
-  tertiary: 1
-};
-const palette = {
-  start: "#005747",
-  end: "#a13a1b",
-  route: "#007461",
-  context: "#506b60"
-};
+let cities = [];
+let mapData = null;
+let mapRequest = null;
+let searchRequest = null;
+let changingCatalog = false;
+const closedByCity = new Map();
+let closed = new Set();
+let editing = false;
+let result = null;
+let displayedRoute = [];
+let processed = 0;
+let elapsed = 0;
+let lastFrame = null;
+let frame = 0;
+let playing = false;
 
-let mapData;
-let routePoints = [];
-let currentRequest;
-
-function selectedStrategy() {
-  return strategyInputs.find((input) => input.checked).value;
+function choice(name) {
+  return document.querySelector(`input[name="${name}"]:checked`).value;
 }
 
-function layoutMap(width, height) {
-  const [west, south, east, north] = mapData.bounds;
-  const latitude = (north + south) / 2;
-  const longitudeScale = Math.cos(latitude * Math.PI / 180);
-  const padding = width < 480 ? 20 : 44;
-  const scale = Math.min(
-    Math.max(width - padding * 2, 1) / ((east - west) * longitudeScale),
-    Math.max(height - padding * 2, 1) / (north - south)
-  );
-  const longitude = (east + west) / 2;
+function updateMap() {
+  setMap(mapData, closed, displayedRoute, editing ? roadSelect.value : null);
+}
 
-  return {
-    pixelsPerMeter: scale / 111195,
-    project([lon, lat]) {
-      return [
-        width / 2 + (lon - longitude) * longitudeScale * scale,
-        height / 2 + (latitude - lat) * scale
-      ];
+function updateActions() {
+  const ready = Boolean(mapData);
+  const catalogBusy = changingCatalog || cities.length === 0;
+  citySelect.disabled = catalogBusy;
+  byId("import-city").disabled = catalogBusy;
+  byId("city-file").disabled = catalogBusy;
+  byId("remove-city").hidden = !cities.some(city => city.id === citySelect.value && !city.builtin);
+  byId("remove-city").disabled = changingCatalog;
+  [startSelect, endSelect, byId("demo"), byId("strategies"), byId("algorithms"), byId("edit-roads")].forEach(control => {
+    control.disabled = !ready;
+  });
+  byId("search").disabled = !ready || !startSelect.value || !endSelect.value || Boolean(searchRequest);
+}
+
+async function readResponse(url, options) {
+  const response = await fetch(url, options);
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.error || `请求失败（${response.status}）`);
+  return body;
+}
+
+function cityMessage(text, error = false) {
+  const message = byId("city-message");
+  message.textContent = text;
+  message.hidden = !text;
+  message.toggleAttribute("data-error", error);
+}
+
+function renderCityList(selected) {
+  citySelect.replaceChildren(...cities.map(city => new Option(city.name, city.id)));
+  citySelect.value = selected;
+  updateActions();
+}
+
+function setEditing(on) {
+  editing = on;
+  byId("road-editor").hidden = !on;
+  byId("edit-roads").setAttribute("aria-pressed", String(on));
+  byId("edit-roads").textContent = on ? "完成修改" : "修改道路";
+  byId("map-stage").classList.toggle("editing", on);
+  updateMap();
+}
+
+function roadLabel(road) {
+  return `${road.name || "未命名道路"} · 路段 ${road.id}`;
+}
+
+function updateRoadControls() {
+  byId("toggle-road").disabled = !roadSelect.value;
+  byId("toggle-road").textContent = closed.has(roadSelect.value) ? "恢复此段" : "封闭此段";
+  byId("random-close").disabled = !mapData || closed.size >= mapData.roads.length;
+  byId("restore-all").disabled = closed.size === 0;
+  byId("closed-count").textContent = `已封闭 ${closed.size} 段`;
+  byId("edit-roads").textContent = editing ? "完成修改" : closed.size ? `修改道路（已封 ${closed.size} 段）` : "修改道路";
+  const closedList = byId("closed-roads");
+  const items = [];
+  for (const road of mapData?.roads ?? []) {
+    if (!closed.has(road.id)) continue;
+    const item = document.createElement("li");
+    const restore = document.createElement("button");
+    restore.type = "button";
+    restore.dataset.id = road.id;
+    restore.setAttribute("aria-label", "恢复" + roadLabel(road));
+    restore.textContent = roadLabel(road) + " ×";
+    item.append(restore);
+    items.push(item);
+  }
+  closedList.replaceChildren(...items);
+  closedList.hidden = items.length === 0;
+}
+
+function changeClosure(id) {
+  if (closed.has(id)) closed.delete(id);
+  else closed.add(id);
+  updateRoadControls();
+  resetSearch();
+}
+
+async function activateCity(id) {
+  mapRequest?.abort();
+  const request = new AbortController();
+  mapRequest = request;
+  mapData = null;
+  closed = new Set();
+  displayedRoute = [];
+  setEditing(false);
+  startSelect.replaceChildren(new Option("选择起点", ""));
+  endSelect.replaceChildren(new Option("选择终点", ""));
+  roadSelect.replaceChildren(new Option("选择指定路段", ""));
+  byId("map-title").textContent = "正在加载路网…";
+  byId("map-meta").textContent = "";
+  byId("source-note").textContent = "";
+  byId("source-link").hidden = true;
+  byId("attribution").hidden = true;
+  updateRoadControls();
+  resetSearch("正在加载路网…");
+  try {
+    const data = await readResponse("/api/map?" + new URLSearchParams({city: id}), {signal: request.signal});
+    if (mapRequest !== request) return;
+    mapData = data;
+    if (!closedByCity.has(id)) closedByCity.set(id, new Set());
+    closed = closedByCity.get(id);
+    for (const select of [startSelect, endSelect]) {
+      select.append(...data.landmarks.map(place => new Option(place.name, place.id)));
     }
-  };
-}
-
-function trace(points, project) {
-  const path = new Path2D();
-  const [x, y] = project(points[0]);
-  path.moveTo(x, y);
-  for (let index = 1; index < points.length; index += 1) {
-    path.lineTo(...project(points[index]));
-  }
-  return path;
-}
-
-function stroke(path, color, width) {
-  context.strokeStyle = color;
-  context.lineWidth = width;
-  context.stroke(path);
-}
-
-function drawRoads(project) {
-  const paths = [new Path2D(), new Path2D(), new Path2D()];
-  for (const road of mapData.roads) {
-    const level = roadLevels[road.highway.replace(/_link$/, "")] ?? 0;
-    paths[level].addPath(trace(road.points, project));
-  }
-  stroke(paths[0], "#c0cec5", 1.25);
-  stroke(paths[1], "#aebfb3", 3);
-  stroke(paths[1], "#f9fbf7", 1.25);
-  stroke(paths[2], "#8fa69a", 4.5);
-  stroke(paths[2], "#fffef8", 2.6);
-}
-
-function boxIntersects(a, b) {
-  return a.left < b.right && a.right > b.left
-    && a.top < b.bottom && a.bottom > b.top;
-}
-
-function placeLabel(text, x, y, margin, layout) {
-  const textWidth = Math.ceil(context.measureText(text).width);
-  const halfWidth = textWidth / 2 + 5;
-  const halfHeight = 10;
-  const candidates = [
-    [x + margin + halfWidth, y],
-    [x - margin - halfWidth, y],
-    [x, y - margin - halfHeight],
-    [x, y + margin + halfHeight]
-  ];
-  for (const [centerX, centerY] of candidates) {
-    const bounds = {
-      left: centerX - halfWidth,
-      right: centerX + halfWidth,
-      top: centerY - halfHeight,
-      bottom: centerY + halfHeight
-    };
-    if (bounds.left < 4 || bounds.top < 4 || bounds.right > layout.width - 4
-        || bounds.bottom > layout.height - 4
-        || layout.occupied.some((other) => boxIntersects(bounds, other))) {
-      continue;
+    const ordered = [...data.roads].sort((a, b) => (a.name || "未命名道路").localeCompare(b.name || "未命名道路", "zh-CN"));
+    roadSelect.append(...ordered.map(road => new Option(roadLabel(road), road.id)));
+    byId("map-title").textContent = data.city.area;
+    byId("map-meta").textContent = `${data.city.name} · ${data.roads.length} 段道路`;
+    const source = byId("source-link");
+    source.href = data.source_url;
+    const hasSource = ["http:", "https:"].includes(source.protocol) && Boolean(source.hostname);
+    const osm = source.hostname === "openstreetmap.org" || source.hostname.endsWith(".openstreetmap.org");
+    byId("source-note").textContent = `路网快照 ${data.extracted_on} · ${data.license}`;
+    source.hidden = !hasSource;
+    byId("attribution").href = osm ? "https://www.openstreetmap.org/copyright" : source.href;
+    byId("attribution").textContent = osm ? "© OpenStreetMap contributors" : "路网数据来源";
+    byId("attribution").hidden = !hasSource;
+    updateRoadControls();
+    resetSearch();
+    return true;
+  } catch (error) {
+    if (mapRequest === request) {
+      byId("map-title").textContent = "城区路网";
+      setStatus("路网加载失败。请重选城市或刷新页面。", true);
     }
-    layout.occupied.push(bounds);
-    return [centerX, centerY, textWidth];
-  }
-  return null;
-}
-
-function drawMarker(kind, x, y) {
-  context.beginPath();
-  if (kind === "both") {
-    context.roundRect(x - 21, y - 12, 42, 24, 9);
-  } else if (kind === "end") {
-    context.moveTo(x, y - 14);
-    context.lineTo(x + 14, y);
-    context.lineTo(x, y + 14);
-    context.lineTo(x - 14, y);
-    context.closePath();
-  } else {
-    context.arc(x, y, kind === "start" ? 12 : 4.2, 0, 2 * Math.PI);
-  }
-
-  context.fillStyle = palette[kind] ?? (kind === "both" ? palette.start : "#6e8b80");
-  context.fill();
-  context.strokeStyle = "#ffffff";
-  context.lineWidth = kind ? 2.6 : 1.7;
-  context.stroke();
-  if (kind) {
-    const symbol = { start: "起", end: "终", both: "起终" }[kind];
-    context.font = `700 12px ${fontFamily}`;
-    context.fillStyle = "#ffffff";
-    context.fillText(symbol, x, y);
+  } finally {
+    if (mapRequest === request) mapRequest = null;
+    updateActions();
   }
 }
 
-function drawLandmarks(project, layout) {
-  const start = mapData.landmarks.find(({ id }) => id === startSelect.value);
-  const end = mapData.landmarks.find(({ id }) => id === endSelect.value);
-  const shared = start && end && start.point.every((value, index) => value === end.point[index]);
-  const markers = mapData.landmarks
-    .filter((place) => !(shared && place === end && start !== end))
-    .map((place) => {
-      const kind = place === start ? (shared ? "both" : "start") : place === end ? "end" : "";
-      return { ...place, kind, xy: project(place.point) };
+async function importPack(file) {
+  if (!file || byId("city-file").disabled) return;
+  changingCatalog = true;
+  updateActions();
+  cityMessage("正在导入城市包…");
+  try {
+    const {city} = await readResponse("/api/cities", {
+      method: "POST", headers: {"Content-Type": "application/json"}, body: file,
     });
-
-  for (const { xy: [x, y], kind } of markers) {
-    const halfWidth = kind === "both" ? 23 : kind ? 15 : 5;
-    const halfHeight = kind ? 15 : 5;
-    layout.occupied.push({ left: x - halfWidth, top: y - halfHeight, right: x + halfWidth, bottom: y + halfHeight });
-    drawMarker(kind, x, y);
-  }
-
-  // If labels compete for room, the selected endpoints keep their names first.
-  markers.sort((a, b) => Number(Boolean(b.kind)) - Number(Boolean(a.kind)));
-  for (const { xy: [x, y], kind, name } of markers) {
-    context.font = `${kind ? 700 : 600} ${kind ? 13 : 12}px ${fontFamily}`;
-    const label = placeLabel(name, x, y, kind === "both" ? 25 : kind ? 17 : 7, layout);
-    if (!label) {
-      continue;
+    cities.push(city);
+    renderCityList(city.id);
+    if (await activateCity(city.id)) {
+      cityMessage(`已导入${city.name}，可通过「移除城市」移除此副本。`);
+    } else {
+      cityMessage(`${city.name}已保存。路网加载失败，请重新选择该城市。`, true);
     }
-    const [labelX, labelY, textWidth] = label;
-    context.beginPath();
-    context.roundRect(labelX - textWidth / 2 - 5, labelY - 10, textWidth + 10, 20, 4);
-    context.fillStyle = kind ? "#ffffff" : "#f9fbf6";
-    context.fill();
-    context.fillStyle = palette[kind] ?? palette.context;
-    context.fillText(name, labelX, labelY);
+  } catch (error) {
+    cityMessage(error.message, true);
+  } finally {
+    changingCatalog = false;
+    byId("city-file").value = "";
+    updateActions();
   }
 }
 
-function drawRoadNames(project, layout) {
-  const labels = mapData.roads.filter((road) => road.name && roadLevels[road.highway] > 0)
-    .map(({ name, points }) => {
-      const [x1, y1] = project(points[0]);
-      const [x2, y2] = project(points.at(-1));
-      const middle = Math.floor((points.length - 1) / 2);
-      const [x3, y3] = project(points[middle]);
-      const [x4, y4] = project(points[middle + 1]);
-      return { name, span: Math.hypot(x2 - x1, y2 - y1), x: (x3 + x4) / 2, y: (y3 + y4) / 2 };
-    })
-    .sort((a, b) => b.span - a.span);
-  const placed = new Set();
-  const limit = layout.width < 560 ? 5 : 11;
-  context.font = `500 12px ${fontFamily}`;
-  for (const { name, x, y } of labels) {
-    if (placed.has(name)) {
-      continue;
-    }
-    const label = placeLabel(name, x, y, 7, layout);
-    if (!label) {
-      continue;
-    }
-    const [labelX, labelY] = label;
-    context.strokeStyle = "#f9fbf6";
-    context.lineWidth = 3;
-    context.strokeText(name, labelX, labelY);
-    context.fillStyle = palette.context;
-    context.fillText(name, labelX, labelY);
-    placed.add(name);
-    if (placed.size === limit) {
-      break;
-    }
+async function removeCity() {
+  const city = cities.find(item => item.id === citySelect.value);
+  if (!city || city.builtin || changingCatalog) return;
+  changingCatalog = true;
+  updateActions();
+  try {
+    await readResponse("/api/cities/" + encodeURIComponent(city.id), {method: "DELETE"});
+    closedByCity.delete(city.id);
+    cities = cities.filter(item => item.id !== city.id);
+    renderCityList(cities[0].id);
+    await activateCity(citySelect.value);
+    cityMessage(`已移除${city.name}的导入副本。`);
+  } catch (error) {
+    cityMessage(error.message, true);
+  } finally {
+    changingCatalog = false;
+    updateActions();
   }
 }
-
-function reserveRouteLabels(project, occupied) {
-  const points = routePoints.map(project);
-  const padding = 6;
-  for (let index = 1; index < points.length; index += 1) {
-    const [x1, y1] = points[index - 1];
-    const [x2, y2] = points[index];
-    occupied.push({
-      left: Math.min(x1, x2) - padding,
-      right: Math.max(x1, x2) + padding,
-      top: Math.min(y1, y2) - padding,
-      bottom: Math.max(y1, y2) + padding
-    });
-  }
-}
-
-function drawMap() {
-  if (!mapData) {
-    return;
-  }
-
-  const { width, height } = stage.getBoundingClientRect();
-  if (!width || !height) {
-    return;
-  }
-  const ratio = window.devicePixelRatio || 1;
-  canvas.width = Math.round(width * ratio);
-  canvas.height = Math.round(height * ratio);
-  context.setTransform(ratio, 0, 0, ratio, 0, 0);
-  context.lineJoin = "round";
-  context.lineCap = "round";
-  context.textAlign = "center";
-  context.textBaseline = "middle";
-
-  const { project, pixelsPerMeter } = layoutMap(width, height);
-  const maxBarWidth = width < 480 ? 70 : 114;
-  const barMeters = [1000, 500, 250, 100, 50].find((value) => value * pixelsPerMeter <= maxBarWidth) ?? 50;
-  const barWidth = Math.round(barMeters * pixelsPerMeter);
-  mapScale.style.width = `${barWidth}px`;
-  scaleValue.textContent = barMeters === 1000 ? "1 km" : `${barMeters} m`;
-  mapScale.hidden = false;
-  const layout = {
-    width,
-    height,
-    occupied: [
-      { left: width - 50, right: width, top: 0, bottom: 62 },
-      { left: 0, right: Math.max(70, barWidth + 25), top: height - 39, bottom: height }
-    ]
-  };
-  drawRoads(project);
-  if (routePoints.length > 1) {
-    const routePath = trace(routePoints, project);
-    stroke(routePath, "#ffffff", 10);
-    stroke(routePath, palette.route, 6.5);
-    reserveRouteLabels(project, layout.occupied);
-  }
-  drawLandmarks(project, layout);
-  drawRoadNames(project, layout);
-}
-
 function setStatus(message, isError = false) {
   routeStatus.textContent = message;
   routeStatus.toggleAttribute("data-error", isError);
@@ -302,7 +233,7 @@ function fillMetric(key, [value, unit], strategy) {
 }
 
 function displayRoute(result, strategy) {
-  routePoints = result.points;
+  displayedRoute = result.points;
   fillMetric("distance", displayDistance(result.distance_m), strategy);
   fillMetric("time", displayTime(result.time_s), strategy);
   fillMetric("surface", [whole.format(result.surface_m), "加权 m"], strategy);
@@ -328,82 +259,198 @@ function displayRoute(result, strategy) {
   setStatus(message);
 }
 
-async function updateRoute() {
-  currentRequest?.abort();
-  currentRequest = null;
-  const start = startSelect.value;
-  const end = endSelect.value;
-  const strategy = selectedStrategy();
-  routePoints = [];
+function resetSearch(message) {
+  searchRequest?.abort();
+  searchRequest = null;
+  cancelAnimationFrame(frame);
+  playing = false;
+  result = null;
+  displayedRoute = [];
+  processed = 0;
+  elapsed = 0;
+  lastFrame = null;
+  byId("playback").hidden = true;
+  byId("processed").textContent = "0";
   routeDetails.hidden = true;
+  traversal.hidden = true;
+  byId("comparison").hidden = true;
+  byId("comparison").tBodies[0].replaceChildren();
   roadList.replaceChildren();
-  startSelect.title = startSelect.selectedOptions[0].text;
-  endSelect.title = endSelect.selectedOptions[0].text;
-  drawMap();
+  setTrace([], 0);
+  updateMap();
+  updateActions();
+  setStatus(message ?? (startSelect.value && endSelect.value
+    ? "已准备好，点击开始搜索。" : "请选择起点和终点，或载入一键演示。"));
+}
 
-  if (!start || !end) {
-    setStatus("选好起点和终点后显示路线。");
-    return;
+function displayComparison() {
+  const strategy = choice("strategy");
+  const table = byId("comparison");
+  const rows = Object.entries(algorithmNames).map(([key, name]) => {
+    const {visited, cost} = result.stats[key];
+    const value = cost === null ? "不可达" : strategy === "time" ? tenths.format(cost) + " 秒"
+      : tenths.format(cost) + (strategy === "surface" ? " 加权 m" : " m");
+    const tr = document.createElement("tr");
+    for (const text of [name, whole.format(visited), value]) {
+      const td = document.createElement("td");
+      td.textContent = text;
+      tr.append(td);
+    }
+    return tr;
+  });
+  table.tBodies[0].replaceChildren(...rows);
+  table.hidden = false;
+}
+
+function finishPlayback() {
+  cancelAnimationFrame(frame);
+  playing = false;
+  processed = result.trace.length;
+  byId("processed").textContent = String(processed);
+  byId("progress").value = processed;
+  byId("play-title").textContent = algorithmNames[result.algorithm] + " 搜索结束";
+  byId("pause").disabled = true;
+  byId("pause").textContent = "暂停";
+  byId("skip").disabled = true;
+  byId("speed").disabled = true;
+  setTrace([], 0);
+  if (result.status === "ok") {
+    displayRoute(result, choice("strategy"));
+  } else {
+    setStatus("在当前可通行的路网中无法到达终点。");
   }
+  displayComparison();
+  updateMap();
+}
 
-  setStatus("正在规划路线…");
+function tick(timestamp) {
+  if (!playing || !result) return;
+  if (lastFrame !== null) elapsed += Math.min(timestamp - lastFrame, 150) * Number(byId("speed").value);
+  lastFrame = timestamp;
+  const duration = Math.min(11000, Math.max(1500, result.trace.length * 18));
+  const target = Math.min(result.trace.length, 1 + Math.floor(elapsed / duration * result.trace.length));
+  if (target !== processed) {
+    processed = target;
+    setTrace(result.trace, processed);
+    byId("processed").textContent = String(processed);
+    byId("progress").value = processed;
+  }
+  if (processed >= result.trace.length) finishPlayback();
+  else frame = requestAnimationFrame(tick);
+}
+
+function togglePlayback() {
+  if (!result || processed >= result.trace.length) return;
+  playing = !playing;
+  byId("pause").textContent = playing ? "暂停" : "继续";
+  byId("play-title").textContent = algorithmNames[result.algorithm] + (playing ? " 搜索中" : " 已暂停");
+  setStatus(playing ? searchExplanation(result.algorithm) : "搜索已暂停，可继续播放或跳到结果。");
+  lastFrame = null;
+  if (playing) frame = requestAnimationFrame(tick);
+  else cancelAnimationFrame(frame);
+}
+
+function searchExplanation(algorithm) {
+  return algorithm === "dijkstra"
+    ? "Dijkstra 优先处理从起点出发、累计代价最低的路口。"
+    : "A* 将已走过的代价与到终点的估计代价相加，优先处理总和最低的路口。";
+}
+
+async function startSearch() {
+  if (!mapData || !startSelect.value || !endSelect.value) return;
+  setEditing(false);
+  updateRoadControls();
+  resetSearch("正在计算搜索过程…");
   const request = new AbortController();
-  currentRequest = request;
-  const params = new URLSearchParams({ start, end, strategy });
+  searchRequest = request;
+  updateActions();
+  const query = {
+    city: mapData.city.id, start: startSelect.value, end: endSelect.value,
+    strategy: choice("strategy"), algorithm: choice("algorithm"), closed: [...closed],
+  };
   try {
-    const response = await fetch(`/api/route?${params}`, { signal: request.signal });
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const result = await response.json();
-    if (currentRequest !== request) {
-      return;
-    }
-    if (result.status === "unreachable") {
-      setStatus("在当前路网范围内找不到可通行的路线。");
-    } else {
-      displayRoute(result, strategy);
-      drawMap();
-    }
-  } catch {
-    if (currentRequest === request) {
-      setStatus("路线查询失败。请检查本地服务后重试。", true);
-    }
+    const data = await readResponse("/api/search", {
+      method: "POST", signal: request.signal, headers: {"Content-Type":"application/json"}, body: JSON.stringify(query),
+    });
+    if (searchRequest !== request) return;
+    result = data;
+    setStatus(searchExplanation(result.algorithm));
+    byId("playback").hidden = false;
+    byId("play-title").textContent = algorithmNames[result.algorithm] + " 搜索中";
+    byId("progress").max = Math.max(1, data.trace.length);
+    byId("progress").value = 0;
+    for (const id of ["pause", "skip", "speed"]) byId(id).disabled = false;
+    byId("pause").textContent = "暂停";
+    playing = true;
+    frame = requestAnimationFrame(tick);
+  } catch (error) {
+    if (searchRequest === request) setStatus(error.message, true);
   } finally {
-    if (currentRequest === request) {
-      currentRequest = null;
-    }
+    if (searchRequest === request) searchRequest = null;
+    updateActions();
   }
 }
 
-async function loadMap() {
-  try {
-    const response = await fetch("/api/map");
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    mapData = await response.json();
-    for (const select of [startSelect, endSelect]) {
-      select.append(...mapData.landmarks.map(({ name, id }) => new Option(name, id)));
-      select.disabled = false;
-    }
-    strategyControl.disabled = false;
-    demoButton.disabled = false;
-    updateRoute();
-  } catch {
-    setStatus("路网加载失败。请确认本地服务已启动，然后刷新页面。", true);
-  }
-}
-
-startSelect.addEventListener("change", updateRoute);
-endSelect.addEventListener("change", updateRoute);
-strategyControl.addEventListener("change", updateRoute);
-demoButton.addEventListener("click", () => {
-  const { start, end, strategy } = mapData.demo;
-  startSelect.value = start;
-  endSelect.value = end;
-  strategyInputs.find((input) => input.value === strategy).checked = true;
-  updateRoute();
+citySelect.addEventListener("change", () => { cityMessage(""); activateCity(citySelect.value); });
+byId("import-city").addEventListener("click", () => byId("city-file").click());
+byId("city-file").addEventListener("change", event => importPack(event.target.files[0]));
+byId("remove-city").addEventListener("click", removeCity);
+byId("edit-roads").addEventListener("click", () => {
+  setEditing(!editing);
+  updateRoadControls();
 });
-new ResizeObserver(drawMap).observe(stage);
-loadMap();
+byId("road-map").addEventListener("click", event => {
+  if (!editing) return;
+  const road = pickRoad(event.clientX, event.clientY);
+  if (road) {
+    roadSelect.value = road.id;
+    changeClosure(road.id);
+  }
+});
+roadSelect.addEventListener("change", () => { updateRoadControls(); updateMap(); });
+byId("toggle-road").addEventListener("click", () => { if (roadSelect.value) changeClosure(roadSelect.value); });
+byId("random-close").addEventListener("click", () => {
+  const available = mapData.roads.filter(road => !closed.has(road.id));
+  const count = 1 + Math.floor(Math.random() * Math.min(3, available.length));
+  for (let i = 0; i < count && available.length; i++) {
+    const [road] = available.splice(Math.floor(Math.random() * available.length), 1);
+    closed.add(road.id);
+  }
+  updateRoadControls();
+  resetSearch();
+});
+byId("restore-all").addEventListener("click", () => {
+  closed.clear();
+  roadSelect.value = "";
+  updateRoadControls();
+  resetSearch();
+});
+byId("closed-roads").addEventListener("click", event => {
+  const button = event.target.closest("button[data-id]");
+  if (button) changeClosure(button.dataset.id);
+});
+for (const control of [startSelect, endSelect, byId("strategies"), byId("algorithms")]) {
+  control.addEventListener("change", () => resetSearch());
+}
+byId("search").addEventListener("click", startSearch);
+byId("demo").addEventListener("click", () => {
+  startSelect.value = mapData.demo.start;
+  endSelect.value = mapData.demo.end;
+  document.querySelector(`input[name="strategy"][value="${mapData.demo.strategy}"]`).checked = true;
+  startSearch();
+});
+byId("skip").addEventListener("click", finishPlayback);
+byId("pause").addEventListener("click", togglePlayback);
+
+async function initialize() {
+  try {
+    const registry = await readResponse("/api/cities");
+    cities = registry.cities;
+    const initial = cities.find(city => city.id === "tianjin") || cities[0];
+    renderCityList(initial.id);
+    await activateCity(initial.id);
+  } catch (error) {
+    setStatus("城市列表加载失败。请确认本地服务已启动，然后刷新页面。", true);
+  }
+}
+initialize();

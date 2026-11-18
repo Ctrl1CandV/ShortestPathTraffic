@@ -44,7 +44,7 @@ button:focus-visible, select:focus-visible, a:focus-visible, summary:focus-visib
 
 .site-title { display: flex; align-items: center; gap: 12px; }
 h1 { font-size: 23px; font-weight: 750; margin: 0; line-height: 1.3; }
-.algorithm { margin: 0; color: var(--muted); font-size: 14px; white-space: nowrap; }
+
 
 .site-mark {
   display: block;
@@ -83,10 +83,10 @@ h1 { font-size: 23px; font-weight: 750; margin: 0; line-height: 1.3; }
 .workspace {
   width: min(calc(100% - 2 * var(--side-margin)), var(--page-width));
   height: calc(100svh - 97px);
-  min-height: 570px;
+  min-height: 548px;
   margin: 16px auto;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(340px, 29vw, 390px);
+  grid-template-columns: minmax(0, 1fr) clamp(350px, 30vw, 406px);
   gap: 16px;
 }
 
@@ -184,7 +184,7 @@ h1 { font-size: 23px; font-weight: 750; margin: 0; line-height: 1.3; }
 .map-footer a { color: inherit; text-underline-offset: 2px; }
 
 .sidebar { min-height: 0; padding: 19px; overflow-y: auto; }
-.planner { display: grid; gap: 13px; }
+.planner { display: grid; gap: 11px; }
 .endpoint-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .endpoint { min-width: 0; }
 .endpoint label, legend { font-size: 14px; font-weight: 650; }
@@ -217,7 +217,7 @@ legend { padding: 0; margin: 0 0 6px; }
 }
 
 .strategy-options span {
-  min-height: 40px;
+  min-height: 35px;
   padding: 4px;
   border: 1px solid var(--control-border);
   border-radius: 7px;
@@ -286,7 +286,7 @@ legend { padding: 0; margin: 0 0 6px; }
 .metrics dd span { white-space: nowrap; }
 .traversal h3 { margin: 0; font-size: 14px; line-height: 1.45; }
 .road-list {
-  max-height: clamp(73px, calc(100svh - 638px), 310px);
+  max-height: clamp(90px, 16svh, 170px);
   overflow-y: auto;
   margin: 4px 0 1px;
   padding: 0 4px 0 24px;
@@ -305,7 +305,69 @@ legend { padding: 0; margin: 0 0 6px; }
 .model-note ul { margin: 3px 0 0; padding-left: 19px; }
 .model-note li { padding-block: 2px; }
 
+button {
+  min-height: 34px; padding: 5px 12px;
+  border: 1px solid var(--control-border); border-radius: 7px;
+  color: var(--ink); background: white; font-size: 14px;
+}
+button:enabled:hover { border-color: var(--route); }
+button:disabled { opacity: .55; }
+.demo-button:hover:enabled { color: white; }
+.city-tools, .section-heading, .play-buttons, .closure-heading, .edit-row {
+  display: flex; align-items: center; gap: 8px;
+}
+.city-tools { flex-wrap: wrap; gap: 6px; }
+.city-tools label { font-size: 14px; font-weight: 650; }
+.city-tools select { flex: 1; width: auto; min-width: 65px; min-height: 34px; font-weight: 650; }
+.city-tools button { padding-inline: 8px; }
+.city-message { margin: 0; font-size: 14px; color: var(--route-dark); }
+.city-message[data-error] { color: var(--destination); }
+.map-header { align-items: center; padding-block: 10px; }
+.map-header > div { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 12px; }
+#edit-roads { justify-self: start; min-height: 30px; }
+#edit-roads[aria-pressed="true"] { background: #fff4eb; border-color: #ba8064; color: #873c23; }
+#road-editor { padding: 8px 16px; background: #fff9f3; border-top: 1px solid #e4d0c2; }
+.edit-row { flex-wrap: wrap; }
+.edit-row select { width: min(280px, 48%); min-height: 34px; }
+#road-editor p, .closure-heading { color: #784e38; font-size: 13px; }
+#road-editor p { margin: 6px 0; line-height: 1.4; }
+.closure-heading button, .text-button { border: 0; min-height: 26px; color: var(--route-dark); padding: 2px 4px; background: none; }
+.closure-heading button { color: #853e27; }
+#closed-roads { display: flex; flex-wrap: wrap; gap: 4px; list-style: none; padding: 0; margin: 4px 0; max-height: 68px; overflow-y: auto; }
+#closed-roads button { min-height: 23px; padding: 2px 6px; color: #86391e; background: white; font-size: 12px; }
+#search-layer { pointer-events: none; }
+.editing #road-map { cursor: crosshair; }
+.legend-search { width: 16px; border-top: 3px solid #5384c5; }
+.legend-current { width: 9px; height: 9px; border-radius: 50%; background: #214f91; }
+.legend-closed { width: 17px; border-top: 3px dashed #a73a25; }
+.playback { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: 8px 12px; padding: 9px 16px; background: #f5f8fc; border-bottom: 1px solid var(--line); }
+.play-info { display: grid; grid-template-columns: auto auto; align-items: baseline; gap: 4px 12px; color: #234675; font-size: 14px; }
+.play-info progress { width: 100%; grid-column: span 2; height: 5px; accent-color: #356eb4; }
+.play-info b, #comparison { font-variant-numeric: tabular-nums; }
+.play-buttons { gap: 5px; }
+.play-buttons button, .play-buttons select { font-size: 13px; min-height: 32px; }
+.play-buttons select { width: auto; }
+.section-heading, .closure-heading { justify-content: space-between; }
+.algorithm-options { grid-template-columns: 1fr 1fr; }
+#comparison { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 13px; }
+#comparison caption { text-align: left; font-weight: 700; font-size: 14px; padding-bottom: 5px; }
+#comparison th, #comparison td { padding: 4px 5px; border-bottom: 1px solid var(--line); text-align: right; }
+#comparison th { font-weight: 500; color: var(--muted); }
+#comparison th:first-child, #comparison td:first-child { text-align: left; }
+#comparison tr:has(td):nth-child(2n+1) { background: #f5f8f5; }
+@media (max-height: 790px) and (min-width: 781px) {
+  .header-inner { min-height: 55px; }
+  .workspace { margin-block: 10px; height: calc(100svh - 76px); gap: 12px; }
+  .sidebar { padding: 14px 16px; }
+  .planner { gap: 8px; }
+  .results { padding-top: 10px; margin-top: 12px; }
+  .metrics { margin-block: 7px; }
+  .metrics > div { min-height: 52px; }
+  #comparison { margin-block: 8px; }
+  .map-footer { padding-block: 8px; }
+}
 @media (max-width: 780px) {
+  .header-inner { flex-wrap: wrap; padding-block: 8px; }
   .workspace { height: auto; min-height: 0; grid-template-columns: minmax(0, 1fr); }
   .map-stage { flex: none; height: max(320px, 54svh); }
   .sidebar { overflow: visible; }
@@ -317,7 +379,6 @@ legend { padding: 0; margin: 0 0 6px; }
   .site-title { gap: 8px; }
   .site-mark { scale: .9; transform-origin: left center; margin-right: -3px; }
   h1 { font-size: 17px; }
-  .algorithm { font-size: 12px; }
   .map-footer { padding-inline: 11px; }
   .sidebar { padding: 15px; }
 }
