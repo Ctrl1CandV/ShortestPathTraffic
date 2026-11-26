@@ -9,7 +9,7 @@ const routeStatus = byId("route-status");
 const routeDetails = byId("route-details");
 const traversal = byId("traversal");
 const roadList = byId("road-list");
-const algorithmNames = {dijkstra: "Dijkstra", astar: "A*"};
+const explanation = "Dijkstra 优先处理从起点出发、累计代价最低的路网节点。";
 const whole = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 0 });
 const tenths = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 1 });
 const hundredths = new Intl.NumberFormat("zh-CN", { maximumFractionDigits: 2 });
@@ -45,7 +45,7 @@ function updateActions() {
   byId("city-file").disabled = catalogBusy;
   byId("remove-city").hidden = !cities.some(city => city.id === citySelect.value && !city.builtin);
   byId("remove-city").disabled = changingCatalog;
-  [startSelect, endSelect, byId("demo"), byId("strategies"), byId("algorithms"), byId("edit-roads")].forEach(control => {
+  [startSelect, endSelect, byId("demo"), byId("strategies"), byId("edit-roads")].forEach(control => {
     control.disabled = !ready;
   });
   byId("search").disabled = !ready || !startSelect.value || !endSelect.value || Boolean(searchRequest);
@@ -273,8 +273,7 @@ function resetSearch(message) {
   byId("processed").textContent = "0";
   routeDetails.hidden = true;
   traversal.hidden = true;
-  byId("comparison").hidden = true;
-  byId("comparison").tBodies[0].replaceChildren();
+  byId("search-summary").hidden = true;
   roadList.replaceChildren();
   setTrace([], 0);
   updateMap();
@@ -283,23 +282,13 @@ function resetSearch(message) {
     ? "已准备好，点击开始搜索。" : "请选择起点和终点，或载入一键演示。"));
 }
 
-function displayComparison() {
-  const strategy = choice("strategy");
-  const table = byId("comparison");
-  const rows = Object.entries(algorithmNames).map(([key, name]) => {
-    const {visited, cost} = result.stats[key];
-    const value = cost === null ? "不可达" : strategy === "time" ? tenths.format(cost) + " 秒"
-      : tenths.format(cost) + (strategy === "surface" ? " 加权 m" : " m");
-    const tr = document.createElement("tr");
-    for (const text of [name, whole.format(visited), value]) {
-      const td = document.createElement("td");
-      td.textContent = text;
-      tr.append(td);
-    }
-    return tr;
-  });
-  table.tBodies[0].replaceChildren(...rows);
-  table.hidden = false;
+function displaySearchSummary() {
+  const {visited, cost} = result.stats;
+  const unit = {distance: "m", time: "秒", surface: "加权 m"}[choice("strategy")];
+  const summary = byId("search-summary");
+  summary.textContent = `已定型 ${whole.format(visited)} 个路网节点` +
+    (cost === null ? "，所有可达节点均已检查。" : ` · 最优代价 ${whole.format(cost)} ${unit}`);
+  summary.hidden = false;
 }
 
 function finishPlayback() {
@@ -308,7 +297,7 @@ function finishPlayback() {
   processed = result.trace.length;
   byId("processed").textContent = String(processed);
   byId("progress").value = processed;
-  byId("play-title").textContent = algorithmNames[result.algorithm] + " 搜索结束";
+  byId("play-title").textContent = "Dijkstra 搜索结束";
   byId("pause").disabled = true;
   byId("pause").textContent = "暂停";
   byId("skip").disabled = true;
@@ -319,7 +308,7 @@ function finishPlayback() {
   } else {
     setStatus("在当前可通行的路网中无法到达终点。");
   }
-  displayComparison();
+  displaySearchSummary();
   updateMap();
 }
 
@@ -343,17 +332,11 @@ function togglePlayback() {
   if (!result || processed >= result.trace.length) return;
   playing = !playing;
   byId("pause").textContent = playing ? "暂停" : "继续";
-  byId("play-title").textContent = algorithmNames[result.algorithm] + (playing ? " 搜索中" : " 已暂停");
-  setStatus(playing ? searchExplanation(result.algorithm) : "搜索已暂停，可继续播放或跳到结果。");
+  byId("play-title").textContent = "Dijkstra" + (playing ? " 搜索中" : " 已暂停");
+  setStatus(playing ? explanation : "搜索已暂停，可继续播放或跳到结果。");
   lastFrame = null;
   if (playing) frame = requestAnimationFrame(tick);
   else cancelAnimationFrame(frame);
-}
-
-function searchExplanation(algorithm) {
-  return algorithm === "dijkstra"
-    ? "Dijkstra 优先处理从起点出发、累计代价最低的路口。"
-    : "A* 将已走过的代价与到终点的估计代价相加，优先处理总和最低的路口。";
 }
 
 async function startSearch() {
@@ -366,7 +349,7 @@ async function startSearch() {
   updateActions();
   const query = {
     city: mapData.city.id, start: startSelect.value, end: endSelect.value,
-    strategy: choice("strategy"), algorithm: choice("algorithm"), closed: [...closed],
+    strategy: choice("strategy"), closed: [...closed],
   };
   try {
     const data = await readResponse("/api/search", {
@@ -374,9 +357,9 @@ async function startSearch() {
     });
     if (searchRequest !== request) return;
     result = data;
-    setStatus(searchExplanation(result.algorithm));
+    setStatus(explanation);
     byId("playback").hidden = false;
-    byId("play-title").textContent = algorithmNames[result.algorithm] + " 搜索中";
+    byId("play-title").textContent = "Dijkstra 搜索中";
     byId("progress").max = Math.max(1, data.trace.length);
     byId("progress").value = 0;
     for (const id of ["pause", "skip", "speed"]) byId(id).disabled = false;
@@ -429,7 +412,7 @@ byId("closed-roads").addEventListener("click", event => {
   const button = event.target.closest("button[data-id]");
   if (button) changeClosure(button.dataset.id);
 });
-for (const control of [startSelect, endSelect, byId("strategies"), byId("algorithms")]) {
+for (const control of [startSelect, endSelect, byId("strategies")]) {
   control.addEventListener("change", () => resetSearch());
 }
 byId("search").addEventListener("click", startSearch);

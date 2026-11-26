@@ -1,6 +1,6 @@
-"""Dijkstra and A* routing for nonnegative road costs."""
+"""Dijkstra routing for nonnegative road costs."""
 
-from collections.abc import Callable, Set
+from collections.abc import Set
 from dataclasses import dataclass
 from heapq import heappop, heappush
 
@@ -39,18 +39,17 @@ def search_graph(
     strategy: str,
     *,
     closed_ids: Set[str] = frozenset(),
-    estimate: Callable[[int], float] | None = None,
     trace: list[tuple[int, int]] | None = None,
 ) -> SearchResult:
-    """A* with a consistent remaining-cost bound, or Dijkstra when omitted."""
+    """Settle vertices by cumulative cost; optionally record the search tree."""
     weight = STRATEGIES[strategy]
     costs = {start: 0.0}
     previous: dict[int, tuple[int, Edge]] = {}
-    queue = [(0.0, start, 0.0)]
+    queue = [(0.0, start)]
     visited = 0
 
     while queue:
-        _, node, cost = heappop(queue)
+        cost, node = heappop(queue)
         if cost != costs[node]:
             continue
         visited += 1
@@ -66,8 +65,7 @@ def search_graph(
             if candidate < costs.get(edge.target, float("inf")):
                 costs[edge.target] = candidate
                 previous[edge.target] = (node, edge)
-                remaining = estimate(edge.target) if estimate else 0.0
-                heappush(queue, (candidate + remaining, edge.target, candidate))
+                heappush(queue, (candidate, edge.target))
     else:
         return SearchResult(None, None, visited)
 

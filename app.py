@@ -16,6 +16,10 @@ STATIC_FILES = {
     "/styles.css": ("styles.css", "text/css; charset=utf-8"),
     "/app.js": ("app.js", "text/javascript; charset=utf-8"),
     "/map.js": ("map.js", "text/javascript; charset=utf-8"),
+    "/scenes.js": ("scenes.js", "text/javascript; charset=utf-8"),
+    "/algorithms.mjs": ("algorithms.mjs", "text/javascript; charset=utf-8"),
+    "/examples.mjs": ("examples.mjs", "text/javascript; charset=utf-8"),
+    "/scenes.css": ("scenes.css", "text/css; charset=utf-8"),
 }
 MAX_BODY = 12 * 1024 * 1024
 
@@ -36,6 +40,8 @@ def make_server(port: int = 8765, registry=None) -> ThreadingHTTPServer:
     }
 
     class Handler(BaseHTTPRequestHandler):
+        server: ThreadingHTTPServer
+
         def respond(self, status: HTTPStatus, body: bytes, content_type: str) -> None:
             self.send_response(status)
             self.send_header("Content-Type", content_type)
@@ -120,18 +126,21 @@ def make_server(port: int = 8765, registry=None) -> ThreadingHTTPServer:
                     city = registry.get(fields.get("city"))
                     network = city.network
                     start, end = fields.get("start"), fields.get("end")
-                    strategy, algorithm = fields.get("strategy"), fields.get("algorithm")
-                    if not all(isinstance(x, str) and x in network.landmarks for x in (start, end)):
+                    strategy = fields.get("strategy")
+                    if not (isinstance(start, str) and start in network.landmarks
+                            and isinstance(end, str) and end in network.landmarks):
                         raise ValueError("请选择当前城市的起点和终点。")
-                    if not isinstance(strategy, str) or strategy not in STRATEGIES or algorithm not in ("dijkstra", "astar"):
-                        raise ValueError("请选择有效的算法和策略。")
+                    if fields.get("algorithm", "dijkstra") != "dijkstra":
+                        raise ValueError("本场景只运行 Dijkstra 算法。")
+                    if not isinstance(strategy, str) or strategy not in STRATEGIES:
+                        raise ValueError("请选择有效的路线策略。")
                     closed = fields.get("closed", [])
                     if not isinstance(closed, list) or any(not isinstance(key, str) for key in closed):
                         raise ValueError("封路列表需要有效的路段编号。")
                     closed_ids = set(closed)
                     if closed_ids.difference(road["id"] for road in city.map_data["roads"]):
                         raise ValueError("封路列表含有其他城市或无效的路段编号。")
-                    self.respond_json(HTTPStatus.OK, network.search(start, end, strategy, algorithm, closed_ids))
+                    self.respond_json(HTTPStatus.OK, network.search(start, end, strategy, closed_ids))
                 else:
                     self.respond_json(HTTPStatus.NOT_FOUND, {"error": "找不到该操作。"})
             except FileNotFoundError:
@@ -164,7 +173,7 @@ def make_server(port: int = 8765, registry=None) -> ThreadingHTTPServer:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="在本机运行多城市最短路径演示")
+    parser = argparse.ArgumentParser(description="在本机运行六个图论算法课堂演示")
     parser.add_argument("--port", type=int, default=8765, help="本地端口（默认 8765）")
     args = parser.parse_args()
     if not 1 <= args.port <= 65_535:

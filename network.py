@@ -52,15 +52,12 @@ class RoadNetwork:
     graph: Graph
     landmarks: dict[str, int]
     map_data: dict
-    min_cost_per_meter: dict[str, float]
 
     @classmethod
     def from_data(cls, data: dict) -> "RoadNetwork":
         points = {node: [lon, lat] for node, lon, lat in data["nodes"]}
         graph: Graph = {node: [] for node in points}
         map_roads = []
-        time_factors = []
-        surface_factors = []
 
         for index, road in enumerate(data["roads"]):
             # A clipped OSM way may have several independent records in the snapshot.
@@ -68,8 +65,6 @@ class RoadNetwork:
             highway = road["highway"]
             speed, traffic, default_surface = ROAD_PROFILES[highway]
             surface = SURFACE_FACTORS.get(road["surface"], default_surface)
-            time_factors.append(3.6 / speed * traffic)
-            surface_factors.append(surface)
             name = road["name"] or "未命名道路"
             nodes = road["nodes"]
             map_roads.append({
@@ -99,49 +94,24 @@ class RoadNetwork:
                 for item in data["landmarks"]
             ],
         }
-        # Every road's length is at least its direct endpoint distance. Multiplying
-        # the same geodesic by the lowest unit cost also bounds time and surface cost.
-        factors = {
-            "distance": 1.0,
-            "time": min(time_factors, default=0.0),
-            "surface": min(surface_factors, default=0.0),
-        }
-        return cls(points, graph, landmarks, map_data, factors)
+        return cls(points, graph, landmarks, map_data)
 
     def route(self, start: str, end: str, strategy: str) -> dict:
         start_node, end_node = self.landmarks[start], self.landmarks[end]
         edges = shortest_path(self.graph, start_node, end_node, strategy)
         return self.describe_route(start_node, edges)
 
-    def search(self, start: str, end: str, strategy: str, algorithm: str, closed_ids: set[str]) -> dict:
-        if algorithm not in ("dijkstra", "astar"):
-            raise ValueError("未知搜索算法")
+    def search(self, start: str, end: str, strategy: str, closed_ids: set[str]) -> dict:
         source, target = self.landmarks[start], self.landmarks[end]
-        target_point = self.points[target]
-        unit_cost = self.min_cost_per_meter[strategy]
-
-        def remaining(node: int) -> float:
-            return segment_length(self.points[node], target_point) * unit_cost
-
         trace = []
-        results = {}
-        for name in ("dijkstra", "astar"):
-            results[name] = search_graph(
-                self.graph, source, target, strategy,
-                closed_ids=closed_ids,
-                estimate=remaining if name == "astar" else None,
-                trace=trace if name == algorithm else None,
-            )
-        edges = results[algorithm].edges
+        result = search_graph(self.graph, source, target, strategy, closed_ids=closed_ids, trace=trace)
+        edges = result.edges
         return {
             **self.describe_route(source, edges),
             "road_ids": [edge.road_id for edge in edges] if edges else [],
-            "algorithm": algorithm,
+            "algorithm": "dijkstra",
             "trace": [[*self.points[node], *self.points[parent]] for node, parent in trace],
-            "stats": {
-                name: {"visited": result.visited, "cost": result.cost}
-                for name, result in results.items()
-            },
+            "stats": {"visited": result.visited, "cost": result.cost},
         }
 
     def describe_route(self, start_node: int, edges: list[Edge] | None) -> dict:

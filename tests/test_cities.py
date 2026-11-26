@@ -108,11 +108,14 @@ def test_city_api_lifecycle_and_search_after_closure(import_dir, pack):
         assert request("POST", "/api/cities", pack)["city"]["id"] == "class-demo"
         city_map = request("GET", "/api/map?city=class-demo")
         road_id = city_map["roads"][0]["id"]
-        query = dict(city="class-demo", start="a", end="b", strategy="distance", algorithm="astar")
+        query = dict(city="class-demo", start="a", end="b", strategy="distance")
+        with pytest.raises(HTTPError) as unsupported:
+            request("POST", "/api/search", dict(query, algorithm="astar"))
+        assert unsupported.value.code == 400
         assert request("POST", "/api/search", query)["status"] == "ok"
         blocked = request("POST", "/api/search", dict(query, closed=[road_id]))
         assert blocked["status"] == "unreachable"
-        assert blocked["stats"]["dijkstra"]["cost"] is None
+        assert blocked["stats"]["cost"] is None
         assert request("POST", "/api/search", query)["status"] == "ok"
         with pytest.raises(HTTPError) as invalid:
             request("POST", "/api/search", dict(query, closed=["bad-id"]))

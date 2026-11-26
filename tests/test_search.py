@@ -1,5 +1,8 @@
 import json
 from pathlib import Path
+from unittest.mock import patch
+
+from routing import search_graph
 
 import networkx as nx
 import pytest
@@ -34,22 +37,16 @@ def small_network():
     })
 
 
-@pytest.mark.parametrize("algorithm", ["dijkstra", "astar"])
-def test_trace_records_the_real_expansion_order_and_parent(small_network, algorithm):
-    result = small_network.search("S", "T", "distance", algorithm, set())
-    trace = [[0, 0, 0, 0], [0.001, 0, 0, 0], [0.002, 0, 0.001, 0]]
-    if algorithm == "dijkstra":
-        trace.insert(1, [0, 0.0005, 0, 0])
-    assert result["trace"] == trace
-    assert result["algorithm"] == algorithm
-    assert result["stats"]["dijkstra"]["visited"] == 4
-    assert result["stats"]["astar"]["visited"] == 3
-    for stats in result["stats"].values():
-        assert stats["cost"] == pytest.approx(222.39, abs=0.01)
+def test_trace_records_one_real_dijkstra_run(small_network):
+    with patch("network.search_graph", wraps=search_graph) as run:
+        result = small_network.search("S", "T", "distance", set())
+        run.assert_called_once()
+    assert result["trace"] == [[0, 0, 0, 0], [0, 0.0005, 0, 0], [0.001, 0, 0, 0], [0.002, 0, 0.001, 0]]
+    assert result["algorithm"] == "dijkstra"
+    assert result["stats"] == {"visited": 4, "cost": pytest.approx(222.39, abs=0.01)}
 
 
-@pytest.mark.parametrize("algorithm", ["dijkstra", "astar"])
-def test_closing_one_record_preserves_parallel_roads_and_directions(algorithm):
+def test_closing_one_record_preserves_parallel_roads_and_directions():
     # Two records of the same OSM way can survive clipping as separate pieces.
     network = RoadNetwork.from_data({
         "bounds": [0, 0, 0.001, 0.001],
@@ -65,36 +62,35 @@ def test_closing_one_record_preserves_parallel_roads_and_directions(algorithm):
     })
     assert [line["id"] for line in network.map_data["roads"]] == ["0", "1"]
 
-    opened = network.search("B", "A", "surface", algorithm, set())
-    closed = network.search("B", "A", "surface", algorithm, {"0"})
-    blocked = network.search("A", "B", "surface", algorithm, {"0"})
-    restored = network.search("B", "A", "surface", algorithm, set())
+    opened = network.search("B", "A", "surface", set())
+    closed = network.search("B", "A", "surface", {"0"})
+    blocked = network.search("A", "B", "surface", {"0"})
+    restored = network.search("B", "A", "surface", set())
     assert opened["roads"][0]["name"] == "双向路"
     assert closed["roads"][0]["name"] == "单行路"
     assert closed["surface_m"] == pytest.approx(1.8 * opened["surface_m"])
     assert blocked["status"] == "unreachable"
     assert blocked["trace"] == [[0, 0, 0, 0]]
-    assert all(stats == {"visited": 1, "cost": None} for stats in blocked["stats"].values())
+    assert blocked["stats"] == {"visited": 1, "cost": None}
     assert restored == opened
 
 
 def test_same_place_with_all_roads_closed(small_network):
-    result = small_network.search("S", "S", "time", "astar", {"0", "1"})
+    result = small_network.search("S", "S", "time", {"0", "1"})
     assert result["points"] == [[0, 0]]
     assert result["roads"] == []
     assert result["trace"] == [[0, 0, 0, 0]]
-    assert all(stats == {"visited": 1, "cost": 0} for stats in result["stats"].values())
+    assert result["stats"] == {"visited": 1, "cost": 0}
 
 
-@pytest.mark.parametrize("algorithm", ["dijkstra", "astar"])
-def test_equal_cost_routes_return_one_complete_path(algorithm):
+def test_equal_cost_routes_return_one_complete_path():
     network = RoadNetwork.from_data({
         "bounds": [-0.001, 0, 0.001, 0.002],
         "nodes": [[1, 0, 0], [2, -0.001, 0.001], [3, 0.001, 0.001], [4, 0, 0.002]],
         "roads": [road(1, "西线", [1, 2, 4]), road(2, "东线", [1, 3, 4])],
         "landmarks": [{"id": "S", "name": "南", "node": 1}, {"id": "N", "name": "北", "node": 4}],
     })
-    result = network.search("S", "N", "distance", algorithm, set())
+    result = network.search("S", "N", "distance", set())
     assert result["road_ids"] in (["0", "0"], ["1", "1"])
     assert result["distance_m"] == pytest.approx(314.51, abs=0.01)
 
@@ -142,14 +138,13 @@ def test_demo_search_matches_networkx_after_road_edits(file, closure):
             expected = nx.shortest_path_length(
                 oracle, network.landmarks[start], network.landmarks[end], weight=metric
             )
-            for algorithm in ("dijkstra", "astar"):
-                result = network.search(start, end, strategy, algorithm, closed)
-                assert result["status"] == "ok"
-                assert result[metric] == pytest.approx(expected)
-                assert all(item["cost"] == pytest.approx(expected) for item in result["stats"].values())
-                assert len(result["trace"]) == result["stats"][algorithm]["visited"]
-                assert len(result["road_ids"]) == len(result["points"]) - 1
-                assert closed.isdisjoint(result["road_ids"])
+            result = network.search(start, end, strategy, closed)
+            assert result["status"] == "ok"
+            assert result[metric] == pytest.approx(expected)
+            assert result["stats"]["cost"] == pytest.approx(expected)
+            assert len(result["trace"]) == result["stats"]["visited"]
+            assert len(result["road_ids"]) == len(result["points"]) - 1
+            assert closed.isdisjoint(result["road_ids"])
             if strategy == "distance":
                 lengths.append(expected)
     assert lengths[0] < lengths[1]

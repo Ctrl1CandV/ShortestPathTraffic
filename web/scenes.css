@@ -1,0 +1,65 @@
+/* Classroom workbench: the same reading order and controls across six topics. */
+.scene-nav {display:flex; align-items:center; gap:3px; flex-wrap:wrap}
+.scene-nav a {color:var(--muted); padding:9px 12px; border-radius:6px; text-decoration:none; font-size:15px; font-weight:600}
+.scene-nav a:hover {background:var(--paper)}
+.scene-nav [aria-current] {color:white; background:var(--route-dark)}
+.scene-nav [aria-current]:hover {background:var(--route-dark)}
+.scene-heading,.scene-grid {width:min(calc(100% - 2 * var(--side-margin)), var(--page-width)); margin-inline:auto}
+.scene-heading {display:flex; align-items:center; justify-content:space-between; gap:16px; padding:16px 0 12px}
+.scene-heading h2 {font-size:clamp(21px,1.7vw,28px); line-height:1.25; margin:0}
+.scene-intro,.scene-method {margin:4px 0 0; color:var(--muted); font-size:15px; line-height:1.5}
+.scene-method {display:grid; justify-items:end; flex:none; margin:0; font-size:13px}
+.scene-method strong {color:var(--route-dark); font-size:16px}
+.workspace {margin-top:0; height:calc(100svh - 164px); min-height:480px}
+.scene-grid {display:grid; grid-template-columns:minmax(0,1fr) clamp(350px,30vw,406px); gap:16px; align-items:start; padding-bottom:18px}
+.scene-board,.scene-controls {min-width:0; overflow:hidden; background:white; border:1px solid var(--line); border-radius:12px}
+.scene-board canvas {width:100%; height:auto; aspect-ratio:840/400; max-height:510px; display:block; object-fit:contain; background:#f4f7f1}
+.scene-play {display:flex; gap:8px; align-items:center; justify-content:space-between; flex-wrap:wrap; border-block:1px solid var(--line); padding:9px 18px; background:#fafbf9}
+.scene-position {font-size:14px; font-weight:650; color:var(--route-dark); font-variant-numeric:tabular-nums}
+.scene-play div {display:flex; flex-wrap:wrap; gap:6px}
+.scene-output {padding:13px 18px 16px; line-height:1.45}
+.scene-output > strong {font-size:20px}
+.scene-note {font-size:15px; line-height:1.5; margin:5px 0; color:var(--muted); overflow-wrap:anywhere}
+.scene-controls {padding:18px}
+.scene-controls h3 {font-size:19px; margin:0 0 14px}
+.sample-label {margin:-9px 0 15px; color:var(--muted); font-size:13px}
+.scene-inputs {display:grid; gap:12px}
+.scene-inputs > button {justify-self:start}
+.scene-inputs details summary {cursor:pointer; color:var(--route-dark); font-weight:600}
+.scene-inputs details fieldset {margin:10px 0 0}
+.matrix-scroll {overflow-x:auto}
+.matrix-scroll .scene-table {min-width:590px}
+.scene-inputs .qualifications th,.scene-inputs .qualifications td {padding:5px 1px; white-space:nowrap}
+.scene-inputs .qualifications {font-size:13px}
+.scene-inputs .qualifications tr:hover {background:var(--route-wash)}
+.scene-field {display:grid; gap:5px; font-size:15px; font-weight:650}
+.scene-field input {width:100%; min-height:40px; border:1px solid var(--control-border); border-radius:7px; padding:7px 10px; color:var(--ink)}
+.scene-checks {display:grid; grid-template-columns:1fr 1fr; gap:5px}
+.scene-check {display:flex; align-items:center; gap:6px; min-height:37px; padding:4px 6px; border:1px solid var(--line); border-radius:6px; font-size:14px; cursor:pointer}
+.scene-check:has(:checked) {background:var(--route-wash); border-color:#a9c7b8}
+.scene-inputs input[type=checkbox] {width:18px; height:18px; flex:none; accent-color:var(--route); cursor:pointer}
+.scene-inputs input:focus-visible {outline:2px solid var(--route); outline-offset:2px}
+.scene-reset {margin-top:16px; border-color:var(--route); color:var(--route-dark)}
+.scene-table {width:100%; border-collapse:collapse; text-align:center; font-size:14px; font-variant-numeric:tabular-nums}
+.scene-table th,.scene-table td {border-bottom:1px solid var(--line); padding:3px; line-height:1.4}
+.scene-table thead {background:#edf2ed}
+.scene-table th:first-child {text-align:left; padding-left:8px}
+.scene-table .selected-row {background:var(--route-wash)}
+.scene-table .updated-cell {color:var(--route-dark); text-decoration:underline 2px; font-weight:bold}
+.scene-hits {margin:6px 0 0; padding-left:22px; font-size:15px}
+@media (max-height:790px) and (min-width:781px) {
+  .scene-heading {padding:8px 0}
+  .workspace {height:calc(100svh - 137px)}
+  .scene-play {padding-block:6px}
+  .scene-board canvas {max-height:400px}
+}
+@media (max-width:780px) {
+  .scene-nav {width:100%; display:grid; grid-template-columns:repeat(3,1fr)}
+  .scene-nav a {text-align:center; padding:6px}
+  .scene-heading {align-items:start; flex-wrap:wrap; gap:4px}
+  .scene-method {justify-items:start}
+  .scene-grid {grid-template-columns:minmax(0,1fr)}
+  .scene-controls {grid-row:1}
+  .scene-board canvas {height:auto; aspect-ratio:840/400}
+  .workspace {height:auto; min-height:0}
+}

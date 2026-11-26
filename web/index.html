@@ -3,16 +3,24 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>城市交通路线规划</title>
+  <title>图论及其应用 · 六场景实验台</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="/scenes.css">
   <script type="module" src="/app.js"></script>
+  <script type="module" src="/scenes.js"></script>
 </head>
 <body>
   <header class="site-header"><div class="header-inner">
-    <div class="site-title"><span class="site-mark" aria-hidden="true"><i></i><i></i><i></i></span><h1>城市交通路线规划</h1></div>
+    <div class="site-title"><span class="site-mark" aria-hidden="true"><i></i><i></i><i></i></span><h1>图论及其应用</h1></div>
+    <nav class="scene-nav" aria-label="六个应用场景">
+      <a href="#social">社交网络</a><a href="#tsp">旅行商</a><a href="#traffic" aria-current="page">城市交通</a><a href="#matching">资源分配</a><a href="#coloring">地图着色</a><a href="#tree">数据检索</a>
+    </nav>
   </div></header>
-  <main class="workspace">
+  <main>
+  <div id="traffic-panel">
+    <header class="scene-heading"><div><h2>城市交通路线规划</h2><p class="scene-intro">封闭一段道路，看看车辆会从哪里绕行，代价增加多少。</p></div><p class="scene-method"><strong>Dijkstra 算法</strong><span id="traffic-reference"></span></p></header>
+    <div class="workspace">
     <section class="map-panel" aria-labelledby="map-title">
       <header class="map-header"><div><h2 id="map-title">城区路网</h2><span id="map-meta"></span></div>
       </header>
@@ -57,10 +65,6 @@
           <label><input type="radio" name="strategy" value="time"><span>预计最快</span></label>
           <label><input type="radio" name="strategy" value="surface"><span>优先路面条件</span></label>
         </div></fieldset>
-        <fieldset id="algorithms" disabled><legend>搜索算法</legend><div class="strategy-options algorithm-options">
-          <label><input type="radio" name="algorithm" value="dijkstra" checked><span>Dijkstra</span></label>
-          <label><input type="radio" name="algorithm" value="astar"><span>A*</span></label>
-        </div></fieldset>
         <button type="button" id="search" class="demo-button" disabled><i aria-hidden="true"></i>开始搜索</button>
       </div>
       <section class="results" aria-labelledby="results-title"><h2 id="results-title">搜索结果</h2>
@@ -72,7 +76,7 @@
             <div data-metric="surface"><dt>路面代价</dt><dd><strong id="surface-value"></strong><span id="surface-unit"></span></dd></div>
           </dl>
         </div>
-        <table id="comparison" hidden><caption>同条件算法对照</caption><thead><tr><th>算法</th><th>处理节点</th><th>最优代价</th></tr></thead><tbody></tbody></table>
+        <p id="search-summary" class="route-status" hidden></p>
         <section class="traversal" id="traversal" hidden><h3>经过道路</h3><ol id="road-list" class="road-list" tabindex="0" aria-label="按行驶顺序列出的道路"></ol></section>
       </section>
       <details class="model-note"><summary>数据来源与教学估算</summary>
@@ -80,6 +84,9 @@
         <ul><li>距离按道路几何计算。时间由距离、参考车速和模拟拥堵倍率估算。</li><li>路面代价为距离乘以惩罚倍率。缺少路面标注时按道路等级估算。</li></ul>
       </details>
     </aside>
+    </div>
+  </div>
+  <section id="other-panel" aria-labelledby="scene-title" hidden></section>
   </main>
 </body>
 </html>

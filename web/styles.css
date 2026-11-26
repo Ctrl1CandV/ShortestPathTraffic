@@ -343,18 +343,11 @@ button:disabled { opacity: .55; }
 .playback { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: 8px 12px; padding: 9px 16px; background: #f5f8fc; border-bottom: 1px solid var(--line); }
 .play-info { display: grid; grid-template-columns: auto auto; align-items: baseline; gap: 4px 12px; color: #234675; font-size: 14px; }
 .play-info progress { width: 100%; grid-column: span 2; height: 5px; accent-color: #356eb4; }
-.play-info b, #comparison { font-variant-numeric: tabular-nums; }
+.play-info b { font-variant-numeric: tabular-nums; }
 .play-buttons { gap: 5px; }
 .play-buttons button, .play-buttons select { font-size: 13px; min-height: 32px; }
 .play-buttons select { width: auto; }
 .section-heading, .closure-heading { justify-content: space-between; }
-.algorithm-options { grid-template-columns: 1fr 1fr; }
-#comparison { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 13px; }
-#comparison caption { text-align: left; font-weight: 700; font-size: 14px; padding-bottom: 5px; }
-#comparison th, #comparison td { padding: 4px 5px; border-bottom: 1px solid var(--line); text-align: right; }
-#comparison th { font-weight: 500; color: var(--muted); }
-#comparison th:first-child, #comparison td:first-child { text-align: left; }
-#comparison tr:has(td):nth-child(2n+1) { background: #f5f8f5; }
 @media (max-height: 790px) and (min-width: 781px) {
   .header-inner { min-height: 55px; }
   .workspace { margin-block: 10px; height: calc(100svh - 76px); gap: 12px; }
@@ -363,7 +356,6 @@ button:disabled { opacity: .55; }
   .results { padding-top: 10px; margin-top: 12px; }
   .metrics { margin-block: 7px; }
   .metrics > div { min-height: 52px; }
-  #comparison { margin-block: 8px; }
   .map-footer { padding-block: 8px; }
 }
 @media (max-width: 780px) {
