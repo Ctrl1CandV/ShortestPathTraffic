@@ -116,12 +116,15 @@ function vertex(ctx, point, label, state = "") {
   if (label) text(ctx, label, x, y + 39, state === "muted" ? muted : undefined);
 }
 
-function labelBox(ctx,[x,y],name,state,span=90) {
-  ctx.fillStyle = state === "current" ? "#fff0d7" : state === "active" ? "#d8efe3" : "#f5f7f3";
-  ctx.strokeStyle = state === "current" ? amber : state === "active" ? accent : "#aabbb0";
+function folderBox(ctx, [x,y], name, state) {
+  const outside = state === "outside";
+  ctx.fillStyle = state === "current" ? "#fff0d7" : state === "active" ? "#d8efe3" : outside ? "#f4f7f1" : "#fff";
+  ctx.strokeStyle = state === "current" ? amber : state === "active" ? accent : outside ? "#b4c2ba" : "#859b8f";
   ctx.lineWidth = state === "current" ? 3 : 1.5;
-  ctx.beginPath(); ctx.roundRect(x-span/2,y-14,span,28,7); ctx.fill(); ctx.stroke();
-  text(ctx,name,x,y,state === "current" ? amber : undefined,17);
+  if (outside) ctx.setLineDash([4, 3]);
+  ctx.beginPath(); ctx.roundRect(x-70,y-14,140,28,7); ctx.fill(); ctx.stroke();
+  ctx.setLineDash([]);
+  text(ctx, name, x, y, outside ? muted : undefined, 17);
 }
 
 function social(controls) {
@@ -236,10 +239,9 @@ function tsp(controls) {
 }
 
 function matching(controls) {
-  const left = workers.map((_, id) => [134, 43 + id*44]);
-  const right = jobs.map((_, id) => [706, 43 + id*44]);
   const grid = table(["人／岗", ...jobs], workers.map(name => [name, ...jobs.map(() => "")]));
   grid.classList.add("qualifications");
+  grid.createCaption().textContent = "岗位资格（勾选表示此人可以负责该岗位）";
   const eligible = workers.map((worker, i) => jobs.map((job, j) => {
     const cell = grid.tBodies[0].rows[i].cells[j + 1];
     const input = node("input", "", {type: "checkbox", "aria-label": `${worker}可负责${job}`});
@@ -252,34 +254,41 @@ function matching(controls) {
 
   return () => {
     const edges = eligible.flatMap((row, i) => row.flatMap((input, j) => input.checked ? [[i, j]] : []));
+    const steps = hungarian(workers.length, jobs.length, edges);
     return {
-      steps: hungarian(workers.length, jobs.length, edges),
-      draw(ctx, step) {
-        for (const [a, b] of edges) edge(ctx, left[a], right[b]);
-        for (const [a, b] of step.matching.entries()) {
-          if (b >= 0) edge(ctx, left[a], right[b], {color: accent, weight: 4});
-        }
-        ctx.setLineDash([7, 5]);
-        for (let i = 1; i < step.path.length; i++) {
-          edge(ctx, left[step.path[i][0]], right[step.path[i - 1][1]], {color: amber});
-        }
-        ctx.setLineDash([]);
-        for (const [a, b] of step.path) edge(ctx, left[a], right[b], {color: amber, weight: 4});
-        for (const [id, name] of workers.entries()) {
-          labelBox(ctx,left[id],name,id === step.root ? "current" : step.matching[id]>=0 ? "active" : "");
-        }
-        for (const [id, name] of jobs.entries()) labelBox(ctx,right[id],name,step.matching.includes(id) ? "active" : "");
-        text(ctx,"灰线：可申请　　绿线：已配对　　橙色：本轮改派（虚线为退出的配对）",width/2,378,muted,16);
-      },
+      steps,
       result(out, step, index, last) {
+        const previous = steps[Math.max(0, index - 1)].matching;
         const count = step.matching.filter(id => id >= 0).length;
-        out.append(node("strong", `${index === last ? "最多可安排" : "已安排"} ${count} 个岗位`));
-        const assignments = step.matching.flatMap((job, id) => job < 0 ? [] : [`${workers[id]} · ${jobs[job]}`]);
-        describe(out, assignments.length ? assignments.join("　") : "当前没有已分配岗位。");
-        if (step.root === null) describe(out, "初始匹配为空。");
-        else if (step.path.length) describe(out, "本步增广路为 " + chain(step.path.flatMap(([a, b]) =>
-          [workers[a], jobs[b]])) + "。");
-        else describe(out, `从${workers[step.root]}出发没有找到增广路。`);
+        const before = jobs.map((_, id) => workers[previous.indexOf(id)]);
+        const after = jobs.map((_, id) => workers[step.matching.indexOf(id)]);
+        const round = node("section", "", {class: "matching-round"});
+        round.append(node("h3", `${index === last ? "最多可安排" : "已安排"} ${count} / ${jobs.length} 岗`));
+        if (step.root === null) {
+          describe(round, "还没有人上岗。点「下一步」，从第一位志愿者开始安排。");
+        } else if (step.path.length) {
+          const lastJob = jobs[step.path.at(-1)[1]];
+          describe(round, step.path.length === 1 ? `本轮增广路：${workers[step.root]}直接填上空缺的「${lastJob}」岗。` :
+            `本轮增广路：从${workers[step.root]}开始，原负责人依次换到下一岗，直到填上空缺的「${lastJob}」。`);
+          const path = node("ol", "", {class: "matching-path", role: "list", "aria-label": "本轮增广路（按顺序）"});
+          for (const [i, [worker, job]] of step.path.entries()) {
+            const segment = node("li");
+            segment.append(node("span", String(i + 1), {"aria-hidden": "true"}),
+              node("div", `${workers[worker]} → ${jobs[job]}`));
+            path.append(segment);
+          }
+          round.append(path);
+        } else {
+          describe(round, `本轮从${workers[step.root]}出发，没找到通往空岗的增广路，排班不变。`);
+        }
+        const roster = table(["岗位", "本轮前", "本轮后", "变化"], jobs.map((name, id) => [name,
+          before[id] ?? "空缺", after[id] ?? "空缺", before[id] === after[id] ? "—" : before[id] ? "换人" : "填补"]));
+        roster.classList.add("matching-roster");
+        roster.createCaption().textContent = "排班对照";
+        for (const [id, row] of [...roster.tBodies[0].rows].entries()) {
+          if (before[id] !== after[id]) row.classList.add("matching-changed");
+        }
+        out.append(round, roster);
       },
     };
   };
@@ -392,37 +401,93 @@ function tree(controls) {
   const branch = selectField(controls, "从哪个目录开始", folders.map((folder, id) => [id, folder.name]));
   const keyword = inputField(controls, "文件名关键词", "算法");
   keyword.maxLength = 60;
-  describe(controls, "先访问当前目录，再进入左、右分支。关键词留空会列出检索范围内的全部资料。");
+  describe(controls, "起始目录和它的子目录都要查。只匹配文件名，不匹配目录名；关键词留空时列出范围内的全部文件。");
+  const parents = [];
+  for (const [id, folder] of folders.entries()) {
+    for (const child of folder.children) parents[child] = id;
+  }
+  const named = id => `「${folders[id].name}」`;
 
-  return () => ({
-    steps: preorderSearch(folders, Number(branch.value), keyword.value),
-    draw(ctx, step) {
-      for (const [i,{children}] of folders.entries()) {
-        const [x,y] = points[i];
-        for (const child of children) {
-          const [cx,cy] = points[child], mid = (x+cx)/2;
-          ctx.strokeStyle = step.visited.includes(child) && step.visited.includes(i) ? accent : "#b4c5b9";
-          ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(mid,y); ctx.lineTo(mid,cy); ctx.lineTo(cx,cy); ctx.stroke();
+  return () => {
+    const start = Number(branch.value);
+    const query = keyword.value.trim();
+    const steps = preorderSearch(folders, start, query);
+    const scope = new Set(steps.at(-1).visited);
+    return {
+      steps,
+      caption(out, step) {
+        const header = node("div", "", {class: "tree-scope"});
+        header.append(node("strong", `从${named(start)}开始`),
+          node("span", `已查 ${step.visited.length} / ${scope.size} 个目录 · 命中 ${step.hits.length} 份文件`));
+        out.append(header);
+        describe(out, "沿图向右看，上支是左子树，下支是右子树。数字是访问次序，✓ 表示有文件命中，虚框不在本次范围内。");
+      },
+      draw(ctx, step) {
+        for (const [i, {children}] of folders.entries()) {
+          const [x,y] = points[i];
+          for (const child of children) {
+            const [cx,cy] = points[child], mid = (x+cx)/2;
+            const within = scope.has(i) && scope.has(child);
+            if (!within) ctx.setLineDash([4, 4]);
+            ctx.strokeStyle = !within ? "#cbd6ce" : step.visited.includes(child) ? accent : "#a1b3a8";
+            ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(mid,y); ctx.lineTo(mid,cy); ctx.lineTo(cx,cy); ctx.stroke();
+            ctx.setLineDash([]);
+          }
         }
-      }
-      for (const [id, folder] of folders.entries()) {
-        const order = step.visited.indexOf(id);
-        const hit = step.hits.some(item => item.id === id);
-        const label = `${order<0 ? "" : `${order+1} `}${folder.name}${hit ? " ✓" : ""}`;
-        labelBox(ctx,points[id],label,id === step.visited.at(-1) ? "current" : order >= 0 ? "active" : "",140);
-      }
-      text(ctx,"从左往右读树，同一父目录先查上支、再查下支　·　数字是访问次序，✓ 表示有命中",width/2,386,muted,15);
-    },
-    result(out, step) {
-      out.append(node("strong", `已访问 ${step.visited.length} 个目录，找到 ${step.hits.length} 份资料`));
-      describe(out, "访问顺序为 " + chain(step.visited.map(id => folders[id].name)) + "。");
-      if (step.hits.length) {
-        const list = node("ul", "", {class: "scene-hits"});
-        for (const {id, name} of step.hits) list.append(node("li", `${folders[id].name} / ${name}`));
-        out.append(list);
-      }
-    },
-  });
+        for (const [id, folder] of folders.entries()) {
+          const order = step.visited.indexOf(id);
+          const hit = step.hits.some(item => item.id === id);
+          const label = `${order >= 0 ? `${order+1} ` : ""}${folder.name}${id === start ? " · 起" : ""}${hit ? " ✓" : ""}`;
+          const current = id === (step.visited.at(-1) ?? start);
+          folderBox(ctx, points[id], label, current ? "current" : order >= 0 ? "active" : scope.has(id) ? "" : "outside");
+        }
+      },
+      inspect(out, step, index, last) {
+        const current = step.visited.at(-1);
+        const next = steps[index+1]?.visited.at(-1);
+        const heading = current === undefined ? `准备检查${named(start)}` :
+          `${index === last ? "最后检查" : "本步检查"}${named(current)}`;
+        out.append(node("h3", heading));
+        describe(out, query ? `文件名含「${query}」才命中。` : "关键词留空，文件名都算命中。");
+        if (current !== undefined) {
+          const files = node("ul", "", {class: "tree-files", "aria-label": "本目录检查结果"});
+          const hitsHere = new Set(step.hits.filter(item => item.id === current).map(item => item.name));
+          for (const name of folders[current].records) {
+            const hit = hitsHere.has(name);
+            files.append(node("li", `${name} · ${hit ? "命中" : "未命中"}`, {class: hit ? "tree-file-hit" : ""}));
+          }
+          if (files.childElementCount) out.append(files);
+          else describe(out, "这个目录里没有文件。");
+        }
+        let reason;
+        if (current === undefined) reason = `先查起始目录${named(start)}里的文件。`;
+        else if (index === last) reason = "起始目录下的分支都已查完，检索结束。";
+        else {
+          const parent = parents[next];
+          const side = folders[parent].children.indexOf(next) === 0 ? "左" : "右";
+          reason = parent === current ? `下一步进入${side}分支${named(next)}。` :
+            `这支已查完，返回${named(parent)}，再进入${side}分支${named(next)}。`;
+        }
+        out.append(node("p", reason, {class: "tree-next"}));
+      },
+      result(out, step, index, last) {
+        const results = node("section", "", {class: "tree-results"});
+        results.append(node("h3", `命中文件（${step.hits.length}）`));
+        if (step.hits.length) {
+          const list = node("ul", "", {class: "scene-hits"});
+          for (const {id, name} of step.hits) list.append(node("li", `${folders[id].name} / ${name}`));
+          results.append(list);
+        } else describe(results, index === last ? "没有文件名符合检索条件。" : "还没有命中文件。");
+        if (step.visited.length) {
+          const order = node("details", "", {class: "tree-order"});
+          order.append(node("summary", "查看访问顺序"));
+          describe(order, chain(step.visited.map(id => folders[id].name)));
+          results.append(order);
+        }
+        out.append(results);
+      },
+    };
+  };
 }
 
 const scenes = {
@@ -439,7 +504,7 @@ const scenes = {
   matching: {
     title: "志愿者与岗位分配", method: "匈牙利算法", page: "§5.4 第 144–145 页",
     note: "开放日的八名志愿者要分到八个岗位。看最后一人加入时，哪些人得换岗。",
-    visual: "志愿者、岗位与当前匹配", setup: matching,
+    setup: matching,
   },
   coloring: {
     title: "行政区划地图着色", method: "顺序着色法", page: "§6.5 第 175–176 页",
@@ -461,7 +526,8 @@ function mount(config) {
     </header>
     <div class="scene-grid">
       <article class="scene-board" aria-label="演示结果">
-        <canvas width="${width}" height="${height}" role="img"></canvas>
+        <div class="scene-caption" hidden></div>
+        ${config.visual ? `<canvas width="${width}" height="${height}" role="img"></canvas>` : ""}
         <div class="scene-play">
           <span class="scene-position"></span>
           <div>
@@ -477,6 +543,7 @@ function mount(config) {
         <h3 id="parameter-title">现场参数</h3><p class="sample-label">教学样例 · 修改后自动计算</p>
         <div class="scene-inputs"></div>
         <button class="scene-reset" type="button">恢复示例</button>
+        <section class="tree-step" role="status" aria-live="polite" hidden></section>
       </aside>
     </div>`;
   const find = selector => panel.querySelector(selector);
@@ -485,12 +552,17 @@ function mount(config) {
   find(".scene-method strong").textContent = config.method;
   find(".scene-method span").textContent = "课本 " + config.page;
   const canvas = find("canvas");
-  canvas.setAttribute("aria-label", config.visual);
-  canvas.width = width * 2;
-  canvas.height = height * 2;
-  const ctx = canvas.getContext("2d");
-  ctx.scale(2, 2);
+  const caption = find(".scene-caption");
+  let ctx;
+  if (canvas) {
+    canvas.setAttribute("aria-label", config.visual);
+    canvas.width = width * 2;
+    canvas.height = height * 2;
+    ctx = canvas.getContext("2d");
+    ctx.scale(2, 2);
+  }
   const controls = find(".scene-inputs");
+  const inspector = find(".tree-step");
   const out = find(".scene-output");
   const buttons = [...panel.querySelectorAll("[data-step]")];
   const position = find(".scene-position");
@@ -500,10 +572,23 @@ function mount(config) {
 
   function paint() {
     const last = view.steps.length - 1;
-    ctx.clearRect(0, 0, width, height);
-    view.draw(ctx, view.steps[index]);
+    const step = view.steps[index];
+    if (ctx) {
+      ctx.clearRect(0, 0, width, height);
+      view.draw(ctx, step);
+    }
+    if (view.caption) {
+      caption.hidden = false;
+      caption.replaceChildren();
+      view.caption(caption, step);
+    }
+    if (view.inspect) {
+      inspector.hidden = false;
+      inspector.replaceChildren();
+      view.inspect(inspector, step, index, last);
+    }
     out.replaceChildren();
-    view.result(out, view.steps[index], index, last);
+    view.result(out, step, index, last);
     position.textContent = last === 0 ? "无待执行步骤" : index === 0 ? `初始状态 · 共 ${last} 步` : `步骤 ${index} / ${last}`;
     buttons.forEach((button, i) => { button.disabled = i < 2 ? index === 0 : index === last; });
   }
